@@ -1,0 +1,12 @@
+{
+  "appId": "br.com.hillracergt.game",
+  "appName": "Hill Racer GT",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0d1117",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
