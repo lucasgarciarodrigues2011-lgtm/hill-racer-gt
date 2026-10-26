@@ -1,0 +1,32 @@
+{
+  "name": "hill-racer-gt",
+  "productName": "Hill Racer GT",
+  "version": "1.0.0",
+  "description": "Hill Racer GT para Windows",
+  "main": "main.js",
+  "author": "Hill Racer GT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "node copy-offline.js && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "br.com.hillracergt.desktop",
+    "productName": "Hill Racer GT",
+    "files": ["main.js", "offline/**/*"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hill Racer GT",
+      "artifactName": "HillRacerGT-Setup.exe"
+    }
+  }
+}
