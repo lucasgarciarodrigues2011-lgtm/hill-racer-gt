@@ -1,0 +1,35 @@
+name: App Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar e gerar o instalador
+        working-directory: desktop
+        run: |
+          npm install
+          npm run dist
+
+      - name: Publicar o instalador
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v1.0.${{ github.run_number }}
+          name: Hill Racer GT para Windows 1.0.${{ github.run_number }}
+          body: "Instalador do Hill Racer GT para Windows. Baixe o arquivo HillRacerGT-Setup.exe abaixo."
+          make_latest: true
+          files: desktop/dist/HillRacerGT-Setup.exe
