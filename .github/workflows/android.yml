@@ -37,6 +37,8 @@ jobs:
           mkdir -p assets
           cp ../icon-512.png assets/icon-only.png
           cp ../icon-512-maskable.png assets/icon-foreground.png
+          command -v convert >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick)
+          convert -size 1024x1024 xc:'#0d1117' assets/icon-background.png
           npx --yes @capacitor/assets@3 generate --android --iconBackgroundColor '#0d1117' --splashBackgroundColor '#0d1117' --splashBackgroundColorDark '#0d1117' || echo "aviso: ícones padrão mantidos"
           npm run android
 
