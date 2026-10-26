@@ -108,6 +108,26 @@ service cloud.firestore {
       allow delete: if isMe(uid);
     }
 
+    // ---- Ranking mensal (troféus ganhos no mês, mês em UTC: 202611) ----
+    match /month/{mk}/runs/{uid} {
+      allow read: if true;
+      allow create, update: if baseRecord(uid)
+        && mk == string(request.time.year() * 100 + request.time.month())
+        && request.resource.data.pts is int
+        && request.resource.data.pts > 0 && request.resource.data.pts <= 3000
+        && request.resource.data.pts <= (resource == null ? 0 : resource.data.pts) + 200;
+      allow delete: if isMe(uid);
+    }
+
+    // ---- Prêmios do ranking mensal (criados só pelo servidor) ----
+    match /rewards/{rid} {
+      allow read: if signed() && rid.matches(request.auth.uid + '_[0-9]{6}');
+      allow update: if signed() && resource.data.uid == request.auth.uid
+        && resource.data.claimed == false
+        && request.resource.data.claimed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed']);
+    }
+
     // todo o resto: bloqueado
     match /{document=**} { allow read, write: if false; }
   }
