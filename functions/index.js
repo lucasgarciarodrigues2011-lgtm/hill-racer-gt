@@ -57,23 +57,50 @@ functions.http("validatePurchase", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Prêmios do ranking mensal: roda no dia 1º (Cloud Scheduler) e cria um prêmio
-// para os 50 primeiros do mês anterior. O jogo resgata o prêmio na próxima vez
-// que o jogador entrar na conta.
-const PRIZE = pos => pos === 1 ? 300 : pos === 2 ? 200 : pos === 3 ? 150 : pos <= 10 ? 80 : 30;
+// Ranking mundial do mês: roda no dia 1º (Cloud Scheduler).
+// - 500 diamantes divididos entre o top 100 (o jogo resgata no próximo login)
+// - 1º lugar ganha o título de Campeão Mundial do mês no perfil
+// - soma os pontos no campeonato do ano; em janeiro coroa o Campeão Mundial do ano
+const { FieldValue: FV } = require("firebase-admin/firestore");
+const PRIZE = p => p === 1 ? 70 : p === 2 ? 35 : p === 3 ? 25 : p <= 10 ? 10 : p <= 30 ? 5 : p <= 60 ? 4 : p <= 100 ? 2 : 0;   // soma = 500
 functions.http("monthlyRewards", async (req, res) => {
   const now = new Date();
   const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const key = (req.query && /^\d{6}$/.test(req.query.month || "")) ? req.query.month : String(prev.getUTCFullYear() * 100 + prev.getUTCMonth() + 1);
-  const snap = await db.collection(`month/${key}/runs`).orderBy("pts", "desc").limit(50).get();
-  let pos = 0, made = 0;
+  const year = key.slice(0, 4);
+  // trava: cada mês é processado uma vez só
+  try { await db.doc(`meta/month_${key}`).create({ startedAt: FV.serverTimestamp() }); }
+  catch (e) { return res.status(200).json({ month: key, skipped: "já processado" }); }
+
+  const snap = await db.collection(`month/${key}/runs`).orderBy("pts", "desc").limit(100).get();
+  let pos = 0, gems = 0;
   for (const d of snap.docs) {
     const r = d.data(); if (!(r.pts > 0)) continue;
     pos++;
-    try {
-      await db.doc(`rewards/${d.id}_${key}`).create({ uid: d.id, nick: r.nick || "", month: key, pos, pts: r.pts, gems: PRIZE(pos), claimed: false, createdAt: FieldValue.serverTimestamp() });
-      made++;
-    } catch (e) { /* já existia: não duplica */ }
+    const g = PRIZE(pos); gems += g;
+    await db.doc(`rewards/${d.id}_${key}`).set({ uid: d.id, nick: r.nick || "", month: key, pos, pts: r.pts, gems: g, claimed: false, createdAt: FV.serverTimestamp() });
+    if (pos === 1) {
+      await db.doc(`players/${d.id}`).set({ titles: FV.arrayUnion({ type: "month", id: key, pts: r.pts }) }, { merge: true });
+      await db.doc(`champions/m_${key}`).set({ type: "month", key, uid: d.id, nick: r.nick || "", pts: r.pts });
+    }
   }
-  res.status(200).json({ month: key, ranked: pos, created: made });
+  // campeonato do ano: soma os pontos do mês de todos que pontuaram
+  const all = await db.collection(`month/${key}/runs`).where("pts", ">", 0).get();
+  for (const d of all.docs) {
+    const r = d.data();
+    await db.doc(`year/${year}/runs/${d.id}`).set({ uid: d.id, nick: r.nick || "", car: "", pts: FV.increment(r.pts), months: FV.arrayUnion(key) }, { merge: true });
+  }
+  // dezembro encerrado = coroa o campeão do ano
+  let yearChampion = null;
+  if (key.endsWith("12")) {
+    const ys = await db.collection(`year/${year}/runs`).orderBy("pts", "desc").limit(1).get();
+    if (!ys.empty) {
+      const d = ys.docs[0], r = d.data();
+      yearChampion = r.nick;
+      await db.doc(`players/${d.id}`).set({ titles: FV.arrayUnion({ type: "year", id: year, pts: r.pts }) }, { merge: true });
+      await db.doc(`champions/y_${year}`).set({ type: "year", key: year + "99", year, uid: d.id, nick: r.nick || "", pts: r.pts });
+    }
+  }
+  await db.doc(`meta/month_${key}`).set({ doneAt: FV.serverTimestamp(), ranked: pos, gems, yearChampion }, { merge: true });
+  res.status(200).json({ month: key, ranked: pos, gems, yearChampion });
 });
