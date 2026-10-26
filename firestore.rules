@@ -1,0 +1,114 @@
+rules_version = '2';
+// Hill Racer GT — regras de segurança do Firestore
+// Cole este arquivo inteiro em: Firebase Console › Firestore Database › Regras › Publicar
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signed() { return request.auth != null; }
+    function isMe(uid) { return signed() && request.auth.uid == uid; }
+    function verified() { return signed() && request.auth.token.email_verified == true; }
+    function nickPath(n) { return /databases/$(db)/documents/nicks/$(n.lower()); }
+    function playerPath(uid) { return /databases/$(db)/documents/players/$(uid); }
+    // apelido do recorde precisa ser o apelido registrado deste usuário
+    function nickIsMine(n) { return n is string && exists(nickPath(n)) && get(nickPath(n)).data.uid == request.auth.uid; }
+    // no máximo 1 envio a cada 10 s no mesmo documento
+    function notTooFast() { return resource == null || request.time > resource.data.ts + duration.value(10, 's'); }
+    // campos comuns de todo recorde
+    function baseRecord(uid) {
+      let d = request.resource.data;
+      return isMe(uid) && verified()
+        && d.uid == uid && nickIsMine(d.nick)
+        && d.ts == request.time
+        && d.car is string && d.car.size() <= 24
+        && notTooFast();
+    }
+
+    // ---- apelidos (únicos) ----
+    match /nicks/{n} {
+      allow read: if true;
+      allow create: if signed()
+        && n.matches('^[a-z0-9_]{3,16}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(playerPath(request.auth.uid)).data.nick.lower() == n;
+      allow delete: if signed() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- perfil público (ranking geral de troféus) ----
+    match /players/{uid} {
+      allow read: if true;
+      allow create: if isMe(uid)
+        && request.resource.data.nick is string
+        && request.resource.data.nick.matches('^[A-Za-z0-9_]{3,16}$')
+        && getAfter(nickPath(request.resource.data.nick)).data.uid == uid
+        && request.resource.data.trophies == 0
+        && request.resource.data.wins == 0;
+      allow update: if isMe(uid) && verified()
+        && request.resource.data.nick == resource.data.nick
+        && request.resource.data.trophies is int
+        && request.resource.data.trophies >= 0 && request.resource.data.trophies <= 20000
+        && request.resource.data.wins is int
+        && request.resource.data.wins >= 0 && request.resource.data.wins <= 100000
+        && request.resource.data.ts == request.time;
+      allow delete: if isMe(uid);
+    }
+
+    // ---- save na nuvem (privado) ----
+    match /saves/{uid} {
+      allow read, delete: if isMe(uid);
+      allow create, update: if isMe(uid)
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 500000
+        && request.resource.data.t is int;
+    }
+
+    // ---- Track Day por carro ----
+    match /td/{car}/runs/{uid} {
+      allow read: if true;
+      allow create, update: if baseRecord(uid)
+        && request.resource.data.car == car
+        && request.resource.data.t1900 is number
+        && request.resource.data.t1900 >= 4 && request.resource.data.t1900 <= 600
+        && request.resource.data.vmax is number
+        && request.resource.data.vmax >= 0 && request.resource.data.vmax <= 1500
+        && (resource == null || request.resource.data.t1900 < resource.data.t1900);
+      allow delete: if isMe(uid);
+    }
+
+    // ---- Track Day, melhor tempo de cada jogador com qualquer carro ----
+    match /tdall/{uid} {
+      allow read: if true;
+      allow create, update: if baseRecord(uid)
+        && request.resource.data.t1900 is number
+        && request.resource.data.t1900 >= 4 && request.resource.data.t1900 <= 600
+        && request.resource.data.vmax is number
+        && request.resource.data.vmax >= 0 && request.resource.data.vmax <= 1500
+        && (resource == null || request.resource.data.t1900 < resource.data.t1900);
+      allow delete: if isMe(uid);
+    }
+
+    // ---- Aventura (distância por cenário) ----
+    match /adv/{env}/runs/{uid} {
+      allow read: if true;
+      allow create, update: if baseRecord(uid)
+        && request.resource.data.env == env
+        && request.resource.data.dist is int
+        && request.resource.data.dist > 0 && request.resource.data.dist <= 500000
+        && (resource == null || request.resource.data.dist > resource.data.dist);
+      allow delete: if isMe(uid);
+    }
+
+    // ---- Eventos da semana ----
+    match /ev/{wk}/runs/{uid} {
+      allow read: if true;
+      allow create, update: if baseRecord(uid)
+        && request.resource.data.val is number
+        && request.resource.data.val > 0 && request.resource.data.val <= 100000
+        && (resource == null || request.resource.data.val > resource.data.val);
+      allow delete: if isMe(uid);
+    }
+
+    // todo o resto: bloqueado
+    match /{document=**} { allow read, write: if false; }
+  }
+}
