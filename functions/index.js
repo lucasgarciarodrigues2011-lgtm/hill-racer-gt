@@ -10,7 +10,7 @@ const crypto = require("crypto");
 initializeApp();
 const db = getFirestore();
 const PKG = process.env.PACKAGE_NAME || "br.com.hillracergt.game";
-const PRODUCTS = new Set(["car_lambid", "car_sangue", "car_omega", "car_devil", "gems_120", "gems_400", "gems_1200", "coins_50k", "coins_250k"]);
+const PRODUCTS = new Set(["car_lambid", "car_sangue", "car_omega", "car_devil", "gems_60", "gems_200", "gems_500", "coins_10k", "coins_40k", "coins_100k"]);
 const auth = new google.auth.GoogleAuth({ scopes: ["https://www.googleapis.com/auth/androidpublisher"] });
 const publisher = google.androidpublisher({ version: "v3", auth });
 
@@ -54,4 +54,26 @@ functions.http("validatePurchase", async (req, res) => {
     console.error("erro ao validar", status, e.message);
     return fail(res, 6778003, "Não foi possível validar agora. Tente de novo.");   // o plugin tenta de novo depois
   }
+});
+
+// ---------------------------------------------------------------------------
+// Prêmios do ranking mensal: roda no dia 1º (Cloud Scheduler) e cria um prêmio
+// para os 50 primeiros do mês anterior. O jogo resgata o prêmio na próxima vez
+// que o jogador entrar na conta.
+const PRIZE = pos => pos === 1 ? 300 : pos === 2 ? 200 : pos === 3 ? 150 : pos <= 10 ? 80 : 30;
+functions.http("monthlyRewards", async (req, res) => {
+  const now = new Date();
+  const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const key = (req.query && /^\d{6}$/.test(req.query.month || "")) ? req.query.month : String(prev.getUTCFullYear() * 100 + prev.getUTCMonth() + 1);
+  const snap = await db.collection(`month/${key}/runs`).orderBy("pts", "desc").limit(50).get();
+  let pos = 0, made = 0;
+  for (const d of snap.docs) {
+    const r = d.data(); if (!(r.pts > 0)) continue;
+    pos++;
+    try {
+      await db.doc(`rewards/${d.id}_${key}`).create({ uid: d.id, nick: r.nick || "", month: key, pos, pts: r.pts, gems: PRIZE(pos), claimed: false, createdAt: FieldValue.serverTimestamp() });
+      made++;
+    } catch (e) { /* já existia: não duplica */ }
+  }
+  res.status(200).json({ month: key, ranked: pos, created: made });
 });
