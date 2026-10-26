@@ -42,9 +42,16 @@ service cloud.firestore {
         && request.resource.data.nick.matches('^[A-Za-z0-9_]{3,16}$')
         && getAfter(nickPath(request.resource.data.nick)).data.uid == uid
         && request.resource.data.trophies == 0
-        && request.resource.data.wins == 0;
+        && request.resource.data.wins == 0
+        && !('titles' in request.resource.data);
       allow update: if isMe(uid) && verified()
         && request.resource.data.nick == resource.data.nick
+        && request.resource.data.get('titles', []) == resource.data.get('titles', [])
+        && request.resource.data.keys().hasOnly(['nick', 'trophies', 'wins', 'car', 'ts', 'titles', 'races', 'topSpeed', 'topCar', 'tdBest', 'tdCar', 'advBest', 'advEnv', 'advEnvName', 'league'])
+        && request.resource.data.get('races', 0) is int && request.resource.data.get('races', 0) <= 1000000
+        && request.resource.data.get('topSpeed', 0) is number && request.resource.data.get('topSpeed', 0) <= 1500
+        && request.resource.data.get('advBest', 0) is number && request.resource.data.get('advBest', 0) <= 500000
+        && request.resource.data.get('tdBest', 0) is number
         && request.resource.data.trophies is int
         && request.resource.data.trophies >= 0 && request.resource.data.trophies <= 20000
         && request.resource.data.wins is int
@@ -127,6 +134,10 @@ service cloud.firestore {
         && request.resource.data.claimed == true
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed']);
     }
+
+    // ---- Campeonato anual e galeria de campeões (escritos só pelo servidor) ----
+    match /year/{y}/runs/{uid} { allow read: if true; }
+    match /champions/{id} { allow read: if true; }
 
     // todo o resto: bloqueado
     match /{document=**} { allow read, write: if false; }
