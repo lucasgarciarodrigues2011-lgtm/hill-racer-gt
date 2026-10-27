@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' && 'yes' || '' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -78,3 +80,16 @@ jobs:
         with:
           name: hill-racer-gt-playstore-aab
           path: app/android/app/build/outputs/bundle/release/*.aab
+
+      # Atualização automática: cada versão nova vai sozinha para a Play Store
+      # (precisa do secret PLAY_SERVICE_ACCOUNT_JSON; a faixa vem da variável PLAY_TRACK, padrão "internal")
+      - name: Publicar na Play Store
+        if: env.KEYSTORE_FILE != '' && env.HAS_PLAY == 'yes'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: br.com.hillracergt.game
+          releaseFiles: app/android/app/build/outputs/bundle/release/*.aab
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: completed
+          inAppUpdatePriority: 3
