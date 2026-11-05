@@ -1,5 +1,5 @@
 // Hill Racer GT — offline after the first visit; the game page is always checked online first
-const V='hillracer-2026-11-05-net';
+const V='hillracer-2026-11-05-infernos';
 const CORE=['/','/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-512-maskable.png'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(V).then(c=>c.addAll(CORE))); self.skipWaiting(); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
